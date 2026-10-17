@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.escanerdocs.app.scan.rememberDocumentScanner
 import com.escanerdocs.app.ui.DocumentScreen
 import com.escanerdocs.app.ui.HomeScreen
+import com.escanerdocs.app.ui.SignPageScreen
+import com.escanerdocs.app.ui.SignatureEditorScreen
 import com.escanerdocs.app.ui.TextScreen
 import com.escanerdocs.app.ui.theme.EscanerTheme
 
@@ -58,7 +60,7 @@ private fun App(vm: AppViewModel) {
         }
     }
 
-    BackHandler(enabled = state.screen != Screen.Home) { vm.back() }
+    BackHandler(enabled = state.screen != Screen.Home()) { vm.back() }
 
     // Pages from a scan go to a new document, or to the open one when adding pages.
     val currentDocId = (state.screen as? Screen.Document)?.id
@@ -73,12 +75,20 @@ private fun App(vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         when (val screen = state.screen) {
-            Screen.Home -> HomeScreen(
+            is Screen.Home -> HomeScreen(
+                folder = state.folders.firstOrNull { it.id == screen.folderId },
+                folders = state.folders,
                 documents = state.documents,
                 query = state.query,
                 onQueryChange = vm::setQuery,
                 onOpen = { vm.open(Screen.Document(it)) },
+                onOpenFolder = { vm.open(Screen.Home(it)) },
+                onBack = { vm.back() },
                 onScan = scanNew,
+                onCreateFolder = vm::createFolder,
+                onRenameFolder = { name -> screen.folderId?.let { vm.renameFolder(it, name) } },
+                onDeleteFolder = { screen.folderId?.let(vm::deleteFolder) },
+                onOpenSignature = { vm.open(Screen.SignatureEditor(returnTo = screen)) },
             )
             is Screen.Document -> {
                 val doc = vm.document(screen.id)
@@ -87,6 +97,7 @@ private fun App(vm: AppViewModel) {
                 } else {
                     DocumentScreen(
                         document = doc,
+                        folders = state.folders,
                         onBack = { vm.back() },
                         onAddPages = scanMore,
                         onSharePdf = { vm.sharePdf(doc.id) },
@@ -96,6 +107,8 @@ private fun App(vm: AppViewModel) {
                         onDelete = { vm.delete(doc.id) },
                         onDeletePage = { vm.deletePage(doc.id, it) },
                         onMovePage = { from, to -> vm.movePage(doc.id, from, to) },
+                        onMoveToFolder = { vm.moveToFolder(doc.id, it) },
+                        onSignPage = { vm.startSigning(doc.id, it) },
                     )
                 }
             }
@@ -105,6 +118,28 @@ private fun App(vm: AppViewModel) {
                 onBack = { vm.back() },
                 onShare = vm::shareText,
             )
+            is Screen.SignatureEditor -> SignatureEditorScreen(
+                current = state.signature,
+                onBack = { vm.back() },
+                onSave = vm::saveSignature,
+                onDelete = vm::deleteSignature,
+            )
+            is Screen.SignPage -> {
+                val page = vm.document(screen.id)?.pages?.getOrNull(screen.pageIndex)
+                val signature = state.signature
+                if (page == null || signature == null) {
+                    LaunchedEffect(Unit) { vm.back() }
+                } else {
+                    SignPageScreen(
+                        page = page,
+                        pageNumber = screen.pageIndex + 1,
+                        signature = signature,
+                        onBack = { vm.back() },
+                        onApply = { vm.signPage(screen.id, screen.pageIndex, it) },
+                        onEditSignature = { vm.open(Screen.SignatureEditor(returnTo = screen)) },
+                    )
+                }
+            }
         }
 
         if (state.busy) {

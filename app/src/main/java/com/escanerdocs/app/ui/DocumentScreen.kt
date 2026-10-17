@@ -23,6 +23,10 @@ import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Share
@@ -55,12 +59,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.escanerdocs.app.data.Folder
 import com.escanerdocs.app.data.ScannedDocument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentScreen(
     document: ScannedDocument,
+    folders: List<Folder>,
     onBack: () -> Unit,
     onAddPages: () -> Unit,
     onSharePdf: () -> Unit,
@@ -70,10 +76,13 @@ fun DocumentScreen(
     onDelete: () -> Unit,
     onDeletePage: (Int) -> Unit,
     onMovePage: (from: Int, to: Int) -> Unit,
+    onMoveToFolder: (String?) -> Unit,
+    onSignPage: (Int) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var choosingFolder by remember { mutableStateOf(false) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
 
     Scaffold(
@@ -103,6 +112,11 @@ fun DocumentScreen(
                             text = { Text("Renombrar") },
                             leadingIcon = { Icon(Icons.Outlined.Edit, null) },
                             onClick = { menuOpen = false; renaming = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Mover a carpeta") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.DriveFileMove, null) },
+                            onClick = { menuOpen = false; choosingFolder = true },
                         )
                         DropdownMenuItem(
                             text = { Text("Eliminar documento") },
@@ -169,6 +183,7 @@ fun DocumentScreen(
                 onDismiss = { previewIndex = null },
                 onDelete = { onDeletePage(index); previewIndex = null },
                 onMove = { to -> onMovePage(index, to); previewIndex = to },
+                onSign = { previewIndex = null; onSignPage(index) },
             )
         } else {
             previewIndex = null
@@ -187,6 +202,15 @@ fun DocumentScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancelar") } },
+        )
+    }
+
+    if (choosingFolder) {
+        FolderPicker(
+            folders = folders,
+            current = document.folderId,
+            onDismiss = { choosingFolder = false },
+            onPick = { choosingFolder = false; onMoveToFolder(it) },
         )
     }
 
@@ -222,6 +246,7 @@ private fun PagePreview(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onMove: (Int) -> Unit,
+    onSign: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -246,6 +271,9 @@ private fun PagePreview(
                 IconButton(onClick = { onMove(index - 1) }, enabled = index > 0) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Mover antes", tint = Color.White)
                 }
+                IconButton(onClick = onSign) {
+                    Icon(Icons.Outlined.Draw, "Firmar página", tint = Color.White)
+                }
                 IconButton(onClick = { confirmDelete = true }) {
                     Icon(Icons.Outlined.Delete, "Eliminar página", tint = Color.White)
                 }
@@ -261,6 +289,59 @@ private fun PagePreview(
             title = { Text("¿Eliminar esta página?") },
             confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
+        )
+    }
+}
+
+/** Lets the user choose a destination folder, or the top level, for a document. */
+@Composable
+private fun FolderPicker(
+    folders: List<Folder>,
+    current: String?,
+    onDismiss: () -> Unit,
+    onPick: (String?) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mover a carpeta") },
+        text = {
+            Column {
+                FolderOption(Icons.Outlined.Home, "Documentos (sin carpeta)", current == null) { onPick(null) }
+                folders.forEach { f ->
+                    FolderOption(Icons.Outlined.Folder, f.name, current == f.id) { onPick(f.id) }
+                }
+                if (folders.isEmpty()) {
+                    Text(
+                        "Aún no tienes carpetas. Créalas desde la pantalla principal con el botón de carpeta.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+@Composable
+private fun FolderOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(enabled = !selected, onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(
+            if (selected) "$label (actual)" else label,
+            modifier = Modifier.padding(start = 16.dp),
+            color = if (selected) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
         )
     }
 }
